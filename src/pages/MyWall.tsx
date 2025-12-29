@@ -5,7 +5,7 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AddContentModal } from '@/components/AddContentModal';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Sparkles, ImagePlus } from 'lucide-react';
+import { Loader2, ImagePlus } from 'lucide-react';
 
 interface Post {
   id: string;
@@ -27,24 +27,33 @@ export default function MyWall() {
   const fetchPosts = async () => {
     if (!user) return;
 
-    const { data, error } = await supabase
+    const { data: postsData, error: postsError } = await supabase
       .from('posts')
-      .select(`
-        id,
-        image_url,
-        content_text,
-        user_id,
-        created_at,
-        profiles (
-          username
-        )
-      `)
+      .select('id, image_url, content_text, user_id, created_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setPosts(data);
+    if (postsError || !postsData) {
+      setLoading(false);
+      return;
     }
+
+    // Fetch profile for current user
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const profile = profileData ? { username: profileData.username } : null;
+
+    // Add profile to all posts (they're all from the same user)
+    const postsWithProfiles: Post[] = postsData.map(post => ({
+      ...post,
+      profiles: profile,
+    }));
+
+    setPosts(postsWithProfiles);
     setLoading(false);
   };
 

@@ -25,24 +25,39 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   const fetchPosts = async () => {
-    const { data, error } = await supabase
+    // Fetch posts first
+    const { data: postsData, error: postsError } = await supabase
       .from('posts')
-      .select(`
-        id,
-        image_url,
-        content_text,
-        user_id,
-        created_at,
-        profiles (
-          username
-        )
-      `)
+      .select('id, image_url, content_text, user_id, created_at')
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (!error && data) {
-      setPosts(data);
+    if (postsError || !postsData) {
+      setLoading(false);
+      return;
     }
+
+    // Get unique user IDs
+    const userIds = [...new Set(postsData.map(p => p.user_id))];
+    
+    // Fetch profiles for those users
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('user_id, username')
+      .in('user_id', userIds);
+
+    // Create a map of user_id to profile
+    const profilesMap = new Map(
+      profilesData?.map(p => [p.user_id, { username: p.username }]) || []
+    );
+
+    // Merge posts with profiles
+    const postsWithProfiles: Post[] = postsData.map(post => ({
+      ...post,
+      profiles: profilesMap.get(post.user_id) || null,
+    }));
+
+    setPosts(postsWithProfiles);
     setLoading(false);
   };
 
