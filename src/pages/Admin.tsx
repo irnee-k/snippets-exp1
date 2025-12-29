@@ -4,7 +4,7 @@ import { Header } from '@/components/Header';
 import { MasonryGrid } from '@/components/MasonryGrid';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Shield, Users, Image, Trash2 } from 'lucide-react';
+import { Loader2, Shield, Users, Image } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,23 +48,38 @@ export default function Admin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchPosts = async () => {
-    const { data, error } = await supabase
+    // Fetch posts first
+    const { data: postsData, error: postsError } = await supabase
       .from('posts')
-      .select(`
-        id,
-        image_url,
-        content_text,
-        user_id,
-        created_at,
-        profiles (
-          username
-        )
-      `)
+      .select('id, image_url, content_text, user_id, created_at')
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setPosts(data);
+    if (postsError || !postsData) {
+      setLoading(false);
+      return;
     }
+
+    // Get unique user IDs
+    const userIds = [...new Set(postsData.map(p => p.user_id))];
+    
+    // Fetch profiles for those users
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('user_id, username')
+      .in('user_id', userIds);
+
+    // Create a map of user_id to profile
+    const profilesMap = new Map(
+      profilesData?.map(p => [p.user_id, { username: p.username }]) || []
+    );
+
+    // Merge posts with profiles
+    const postsWithProfiles: Post[] = postsData.map(post => ({
+      ...post,
+      profiles: profilesMap.get(post.user_id) || null,
+    }));
+
+    setPosts(postsWithProfiles);
     setLoading(false);
   };
 
